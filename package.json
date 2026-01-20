@@ -1,0 +1,26 @@
+{
+  "name": "ylstack",
+  "version": "1.0.0",
+  "description": "Universal Platform Engine",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --watch packages/core/src/index.ts",
+    "build": "bun run build:core",
+    "build:core": "bun build ./packages/core/src/index.ts --outdir ./packages/core/dist --target node",
+    "test": "bun test",
+    "lint": "bunx eslint . --ext .ts,.tsx",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "bun-types": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  }
+}
