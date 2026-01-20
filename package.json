@@ -25,6 +25,11 @@
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "drizzle-orm": "^0.45.1"
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "bcrypt": "^6.0.0",
+    "drizzle-orm": "^0.45.1",
+    "jsonwebtoken": "^9.0.3",
+    "semver": "^7.7.3"
   }
 }
