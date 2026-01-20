@@ -1,10 +1,15 @@
 // Public API for the database layer
-export { initializeDb, getDb, closeDb } from './client';
+export { initializeDb, getDb, closeDb, getDbClient } from './client';
 export type { Database, DatabaseSchema } from './client';
 
-// Export schema tables
-export { usersTable, sessionsTable, pagesTable, settingsTable, pluginDataTable } from './schema';
+// Export schemas
+export { sqliteSchema, usersTable, sessionsTable, pagesTable, settingsTable, pluginDataTable } from './schema';
+export { postgresSchema } from './schemas/postgresql';
 export { default as schema } from './schema';
+
+// Utilities
+export { normalizeSqliteUrl, ensureSqliteFileDirectory } from './url';
+export { withTransaction, bulkInsert, seedDatabase } from './utils';
 
 // Export types
 export type {

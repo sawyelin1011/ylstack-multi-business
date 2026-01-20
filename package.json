@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "bun run --watch packages/core/src/index.ts",
     "build": "bun run build:core",
-    "build:core": "bun build ./packages/core/src/index.ts --outdir ./packages/core/dist --target node",
+    "build:core": "cd packages/core && bun run build",
     "test": "bun test",
     "lint": "bunx eslint . --ext .ts,.tsx",
     "typecheck": "bunx tsc --noEmit"

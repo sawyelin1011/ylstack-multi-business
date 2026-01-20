@@ -18,6 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@ylstack/core": ["./packages/core/src"],
+      "@ylstack/core/config": ["./packages/core/src/lib/config/index.ts"],
+      "@ylstack/core/db": ["./packages/core/src/lib/db/index.ts"],
       "@ylstack/core/*": ["./packages/core/src/*"]
     }
   },

@@ -1,8 +1,6 @@
-// Import table types from Drizzle
-import type { usersTable, sessionsTable, pagesTable, settingsTable, pluginDataTable } from './schema';
+import { usersTable, sessionsTable, pagesTable, settingsTable, pluginDataTable } from './schema';
 export type { Database, DatabaseSchema } from './client';
 
-// Export all tables for convenience
 export { usersTable, sessionsTable, pagesTable, settingsTable, pluginDataTable } from './schema';
 
 // Table row types

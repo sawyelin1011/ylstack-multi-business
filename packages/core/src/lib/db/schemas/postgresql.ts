@@ -4,7 +4,6 @@ import {
   integer,
   uniqueIndex,
   primaryKey,
-  foreignKey,
   index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -82,11 +81,12 @@ export const pluginDataTable = pgTable('plugin_data', {
   index('idx_plugin_data_plugin').on(table.pluginId),
 ]);
 
-// Export all tables as a single schema object for easy import
-export default {
+export const postgresSchema = {
   usersTable,
   sessionsTable,
   pagesTable,
   settingsTable,
   pluginDataTable,
-};
+} as const;
+
+export default postgresSchema;
