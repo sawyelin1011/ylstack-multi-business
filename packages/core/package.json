@@ -11,9 +11,14 @@
       "require": "./dist/index.js"
     },
     "./config": {
-      "types": "./dist/config/index.d.ts",
-      "import": "./dist/config/index.js",
-      "require": "./dist/config/index.js"
+      "types": "./dist/lib/config/index.d.ts",
+      "import": "./dist/lib/config/index.js",
+      "require": "./dist/lib/config/index.js"
+    },
+    "./db": {
+      "types": "./dist/lib/db/index.d.ts",
+      "import": "./dist/lib/db/index.js",
+      "require": "./dist/lib/db/index.js"
     }
   },
   "files": [
@@ -28,6 +33,7 @@
   "dependencies": {
     "@libsql/client": "^0.17.0",
     "better-sqlite3": "^12.6.2",
+    "drizzle-orm": "^0.45.1",
     "pg": "^8.17.2",
     "yaml": "^2.8.2",
     "zod": "^4.3.5"

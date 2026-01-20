@@ -2,33 +2,32 @@ import { drizzle as drizzleSqlite, type BetterSQLite3Database } from 'drizzle-or
 import { drizzle as drizzlePostgres, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { drizzle as drizzleD1, type DrizzleD1Database } from 'drizzle-orm/d1';
 import { drizzle as drizzleLibSQL, type LibSQLDatabase } from 'drizzle-orm/libsql';
-import { getDatabaseConfig } from '$lib/config';
-import { usersTable, sessionsTable, pagesTable, settingsTable, pluginDataTable } from './schema';
+import { getDatabaseConfig } from '../config';
+import { sqliteSchema } from './schema';
+import { postgresSchema } from './schemas/postgresql';
 import type { Env } from '../../types';
+import { ensureSqliteFileDirectory, normalizeSqliteUrl } from './url';
 
-// Type for the complete database schema
-type DatabaseSchema = {
-  usersTable: typeof usersTable;
-  sessionsTable: typeof sessionsTable;
-  pagesTable: typeof pagesTable;
-  settingsTable: typeof settingsTable;
-  pluginDataTable: typeof pluginDataTable;
-};
+export type SqliteDatabaseSchema = typeof sqliteSchema;
+export type PostgresDatabaseSchema = typeof postgresSchema;
+export type DatabaseSchema = SqliteDatabaseSchema | PostgresDatabaseSchema;
 
-// Union type for all supported database instances
-export type Database = 
-  | BetterSQLite3Database<DatabaseSchema>
-  | NodePgDatabase<DatabaseSchema>
-  | DrizzleD1Database<DatabaseSchema>
-  | LibSQLDatabase<DatabaseSchema>;
+export type Database =
+  | BetterSQLite3Database<SqliteDatabaseSchema>
+  | NodePgDatabase<PostgresDatabaseSchema>
+  | DrizzleD1Database<SqliteDatabaseSchema>
+  | LibSQLDatabase<SqliteDatabaseSchema>;
 
-// Singleton database instance
 let db: Database | null = null;
+let dbClient: unknown = null;
+let dbDriver: (ReturnType<typeof getDatabaseConfig>['driver']) | null = null;
 
 /**
- * Initialize the database connection based on the configured driver
- * @param env - Environment object (required for D1 driver with Cloudflare)
- * @returns Promise<Database> - Initialized database instance
+ * Initialize the database connection based on the configured driver.
+ *
+ * Notes:
+ * - SQLite (better-sqlite3) is synchronous. Avoid async callbacks inside transactions.
+ * - D1 requires an `env` binding.
  */
 export async function initializeDb(env?: Env): Promise<Database> {
   if (db) {
@@ -36,49 +35,46 @@ export async function initializeDb(env?: Env): Promise<Database> {
   }
 
   const config = getDatabaseConfig();
+  dbDriver = config.driver;
 
   try {
     switch (config.driver) {
       case 'sqlite': {
-        const { default: Database } = await import('better-sqlite3');
-        const sqliteInstance = new Database(config.url);
-        
-        // Enable WAL mode for better concurrent write performance
+        const { default: BetterSqlite3Database } = await import('better-sqlite3');
+        const filename = normalizeSqliteUrl(config.url);
+        ensureSqliteFileDirectory(filename);
+
+        const sqliteInstance = new BetterSqlite3Database(filename);
+        dbClient = sqliteInstance;
+
         sqliteInstance.pragma('journal_mode = WAL');
-        
-        db = drizzleSqlite(sqliteInstance, { 
-          schema: {
-            usersTable,
-            sessionsTable,
-            pagesTable,
-            settingsTable,
-            pluginDataTable,
-          } 
+
+        db = drizzleSqlite(sqliteInstance, {
+          schema: sqliteSchema,
         });
-        
-        console.log('✅ SQLite connected:', config.url);
+
+        console.log('✅ SQLite connected:', filename);
         break;
       }
 
       case 'postgresql': {
         const { Pool } = await import('pg');
-        const pool = new Pool({ 
+        const pool = new Pool({
           connectionString: config.url,
           max: config.poolSize,
           connectionTimeoutMillis: config.connectionTimeout,
         });
-        
-        db = drizzlePostgres(pool, { 
-          schema: {
-            usersTable,
-            sessionsTable,
-            pagesTable,
-            settingsTable,
-            pluginDataTable,
-          } 
+
+        dbClient = pool;
+
+        db = drizzlePostgres(pool, {
+          schema: postgresSchema,
         });
-        
-        console.log('✅ PostgreSQL connected:', config.url.replace(/:\/\/[^:@]+:[^@]+@/, '://***:***@'));
+
+        console.log(
+          '✅ PostgreSQL connected:',
+          config.url.replace(/:\/\/[^:@]+:[^@]+@/, '://***:***@')
+        );
         break;
       }
 
@@ -86,37 +82,29 @@ export async function initializeDb(env?: Env): Promise<Database> {
         if (!env?.D1) {
           throw new Error('D1 binding not found in environment variables');
         }
-        
-        db = drizzleD1(env.D1, { 
-          schema: {
-            usersTable,
-            sessionsTable,
-            pagesTable,
-            settingsTable,
-            pluginDataTable,
-          } 
+
+        dbClient = env.D1;
+
+        db = drizzleD1(env.D1, {
+          schema: sqliteSchema,
         });
-        
+
         console.log('✅ Cloudflare D1 connected');
         break;
       }
 
       case 'libsql': {
         const { createClient } = await import('@libsql/client');
-        const client = createClient({ 
+        const client = createClient({
           url: config.url,
         });
-        
-        db = drizzleLibSQL(client, { 
-          schema: {
-            usersTable,
-            sessionsTable,
-            pagesTable,
-            settingsTable,
-            pluginDataTable,
-          } 
+
+        dbClient = client;
+
+        db = drizzleLibSQL(client, {
+          schema: sqliteSchema,
         });
-        
+
         console.log('✅ libSQL connected:', config.url);
         break;
       }
@@ -127,16 +115,17 @@ export async function initializeDb(env?: Env): Promise<Database> {
 
     return db;
   } catch (error) {
+    db = null;
+    dbClient = null;
+    dbDriver = null;
+
     console.error('❌ Database initialization failed:', error);
-    throw new Error(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 }
 
-/**
- * Get the database instance
- * @returns Database - The initialized database instance
- * @throws Error if database not initialized
- */
 export function getDb(): Database {
   if (!db) {
     throw new Error('Database not initialized. Call initializeDb() first in your application startup code.');
@@ -144,50 +133,55 @@ export function getDb(): Database {
   return db;
 }
 
-/**
- * Close all database connections gracefully
- */
+export function getDbClient(): unknown {
+  if (!db || !dbClient) {
+    throw new Error('Database not initialized. Call initializeDb() first.');
+  }
+  return dbClient;
+}
+
 export async function closeDb(): Promise<void> {
   if (!db) {
     return;
   }
 
   try {
-    const config = getDatabaseConfig();
-    
-    // Close connections based on driver type
-    switch (config.driver) {
+    switch (dbDriver) {
       case 'sqlite': {
-        // For SQLite/better-sqlite3, the connection is automatically managed
-        console.log('Closing SQLite database connection...');
+        const clientAny = dbClient as any;
+        if (clientAny && typeof clientAny.close === 'function') {
+          clientAny.close();
+        }
         break;
       }
 
       case 'postgresql': {
-        // For PostgreSQL, we need to close the pool
-        const dbAny = db as NodePgDatabase<DatabaseSchema>;
-        if (dbAny.$client) {
-          await dbAny.$client.end();
-          console.log('PostgreSQL pool closed');
+        const clientAny = dbClient as any;
+        if (clientAny && typeof clientAny.end === 'function') {
+          await clientAny.end();
         }
         break;
       }
 
       case 'libsql': {
-        // libSQL client cleanup
-        const dbAny = db as LibSQLDatabase<DatabaseSchema>;
-        console.log('libSQL connection closed');
+        const clientAny = dbClient as any;
+        if (clientAny && typeof clientAny.close === 'function') {
+          await clientAny.close();
+        }
         break;
       }
 
       case 'd1': {
-        // D1 connections are managed by Cloudflare
-        console.log('D1 connection closed (managed by Cloudflare)');
         break;
       }
+
+      default:
+        break;
     }
 
     db = null;
+    dbClient = null;
+    dbDriver = null;
   } catch (error) {
     console.error('Error closing database connection:', error);
     throw error;

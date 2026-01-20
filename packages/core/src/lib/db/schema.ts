@@ -4,7 +4,6 @@ import {
   integer,
   uniqueIndex,
   primaryKey,
-  foreignKey,
   index,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
@@ -94,11 +93,12 @@ export const pluginDataTable = sqliteTable(
   })
 );
 
-// Export all tables as a single schema object for easy import
-export default {
+export const sqliteSchema = {
   usersTable,
   sessionsTable,
   pagesTable,
   settingsTable,
   pluginDataTable,
-};
+} as const;
+
+export default sqliteSchema;
