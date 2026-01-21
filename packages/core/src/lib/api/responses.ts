@@ -27,6 +27,11 @@ export interface CreatedResponse<T = any> extends ApiResponse<T> {
   data: T;
 }
 
+export interface SuccessResponse<T = any> extends ApiResponse<T> {
+  success: true;
+  data?: T;
+}
+
 export interface ErrorResponse extends ApiResponse<null> {
   success: false;
   data: null;
@@ -37,9 +42,20 @@ export interface ErrorResponse extends ApiResponse<null> {
   };
 }
 
-export interface SuccessResponse<T = any> extends ApiResponse<T> {
-  success: true;
-  data?: T;
+export interface PaginatedResponse<T = any> extends SuccessResponse<{ items: T[]; pagination: PaginationMetadata }> {
+  data: {
+    items: T[];
+    pagination: PaginationMetadata;
+  };
+}
+
+export interface PaginationMetadata {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext?: boolean;
+  hasPrev?: boolean;
 }
 
 interface MetaOptions {
@@ -53,7 +69,7 @@ interface MetaOptions {
  */
 function createMeta(options: MetaOptions): ApiResponse['meta'] {
   const { requestId, duration, ...additionalMeta } = options;
-  
+
   return {
     timestamp: new Date().toISOString(),
     requestId,
@@ -70,7 +86,7 @@ export function successResponse<T>(
   meta?: MetaOptions & { requestId?: string }
 ): SuccessResponse<T> {
   const requestId = meta?.requestId || generateRequestId();
-  
+
   return {
     success: true,
     ...(data !== undefined && { data }),
@@ -90,7 +106,7 @@ export function createdResponse<T>(
   meta?: MetaOptions & { requestId?: string }
 ): CreatedResponse<T> {
   const requestId = meta?.requestId || generateRequestId();
-  
+
   return {
     success: true,
     data,
@@ -110,14 +126,14 @@ export function errorResponse(
   meta?: MetaOptions & { requestId?: string }
 ): ErrorResponse {
   const requestId = meta?.requestId || generateRequestId();
-  
+
   // Convert to AppError if needed
   const appError = error instanceof AppError ? error : new AppError(
     error.message || 'Unknown error',
     500,
     'INTERNAL_ERROR'
   );
-  
+
   return {
     success: false,
     data: null,
@@ -149,7 +165,7 @@ export function noContentResponse(
       ...(meta?.duration && { 'X-Response-Time': `${meta.duration}ms` }),
     },
   });
-  
+
   return response;
 }
 
@@ -162,7 +178,7 @@ export function redirectResponse(
   meta?: MetaOptions & { requestId?: string }
 ): Response {
   const requestId = meta?.requestId || generateRequestId();
-  
+
   return new Response(null, {
     status,
     headers: {
@@ -192,134 +208,52 @@ export function paginatedResponse<T>(
   pagination: typeof pagination;
 }> {
   const requestId = meta?.requestId || generateRequestId();
-  
+
   return {
     success: true,
     data: {
       items: data,
       pagination: {
-        ...pagination,
-        hasNext: pagination.page < pagination.totalPages,
-        hasPrev: pagination.page > 1,
+        page: pagination.page,
+        limit: pagination.limit,
+        total: pagination.total,
+        totalPages: pagination.totalPages,
+        ...(pagination.hasNext !== undefined && { hasNext: pagination.hasNext }),
+        ...(pagination.hasPrev !== undefined && { hasPrev: pagination.hasPrev }),
       },
     },
     meta: createMeta({
       requestId,
       duration: meta?.duration,
-      pagination: {
-        page: pagination.page,
-        limit: pagination.limit,
-        total: pagination.total,
-        totalPages: pagination.totalPages,
-      },
+      ...(meta && Object.keys(meta).length > 0 && { ...meta })
     }),
   };
 }
 
 /**
- * Utility functions for response handling
- */
-export const ResponseUtils = {
-  /**
-   * Set common response headers
-   */
-  setHeaders(response: Response, headers: Record<string, string>): Response {
-    const newHeaders = new Headers(response.headers);
-    Object.entries(headers).forEach(([key, value]) => {
-      newHeaders.set(key, value);
-    });
-    
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: newHeaders,
-    });
-  },
-
-  /**
-   * Add CORS headers to response
-   */
-  addCorsHeaders(
-    response: Response,
-    origin: string,
-    methods: string = 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-    headers: string = 'Content-Type, Authorization, X-Request-ID'
-  ): Response {
-    return ResponseUtils.setHeaders(response, {
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': methods,
-      'Access-Control-Allow-Headers': headers,
-      'Access-Control-Max-Age': '86400',
-    });
-  },
-
-  /**
-   * Add security headers to response
-   */
-  addSecurityHeaders(response: Response): Response {
-    return ResponseUtils.setHeaders(response, {
-      'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
-      'X-XSS-Protection': '1; mode=block',
-      'Referrer-Policy': 'strict-origin-when-cross-origin',
-      'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
-    });
-  },
-
-  /**
-   * Check if response is successful
-   */
-  isSuccessful(response: Response): boolean {
-    return response.status >= 200 && response.status < 300;
-  },
-
-  /**
-   * Check if response is client error
-   */
-  isClientError(response: Response): boolean {
-    return response.status >= 400 && response.status < 500;
-  },
-
-  /**
-   * Check if response is server error
-   */
-  isServerError(response: Response): boolean {
-    return response.status >= 500;
-  },
-};
-
-/**
- * Generate a unique request ID
- */
-function generateRequestId(): string {
-  // Simple UUID v4 generation
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/**
- * Response builder class for complex responses
+ * Response Builder for fluent response construction
  */
 export class ResponseBuilder {
-  private response: Partial<ApiResponse> = {
-    success: true,
-    meta: {
-      timestamp: new Date().toISOString(),
-      requestId: generateRequestId(),
-    },
-  };
-
-  private data: any = undefined;
-  private error: any = undefined;
+  private response: ApiResponse<any>;
+  private data?: any;
+  private error?: any;
   private statusCode: number = 200;
 
   constructor(requestId?: string) {
-    if (requestId) {
-      this.response.meta = { ...this.response.meta, requestId };
-    }
+    this.response = {
+      success: true,
+      meta: createMeta({ requestId: requestId || generateRequestId() }),
+    };
+  }
+
+  requestId(id: string): ResponseBuilder {
+    this.response.meta = { ...this.response.meta, requestId };
+    return this;
+  }
+
+  duration(ms: number): ResponseBuilder {
+    this.response.meta.duration = ms;
+    return this;
   }
 
   success(data: any): ResponseBuilder {
@@ -331,9 +265,9 @@ export class ResponseBuilder {
 
   error(error: AppError | Error): ResponseBuilder {
     this.response.success = false;
-    this.error = error instanceof AppError ? error.toJSON() : { 
-      code: 'INTERNAL_ERROR', 
-      message: error.message 
+    this.error = error instanceof AppError ? error.toJSON() : {
+      code: 'INTERNAL_ERROR',
+      message: error.message
     };
     this.data = null;
     this.statusCode = error instanceof AppError ? error.statusCode : 500;
@@ -365,4 +299,60 @@ export class ResponseBuilder {
       },
     });
   }
+}
+
+/**
+ * Utility functions for response handling
+ */
+export const ResponseUtils = {
+  json<T>(data: T, status: number = 200): Response {
+    return new Response(JSON.stringify(data), {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  },
+
+  text(text: string, status: number = 200): Response {
+    return new Response(text, {
+      status,
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    });
+  },
+
+  html(html: string, status: number = 200): Response {
+    return new Response(html, {
+      status,
+      headers: {
+        'Content-Type': 'text/html',
+      },
+    });
+  },
+
+  redirect(location: string, status: number = 302): Response {
+    return new Response(null, {
+      status,
+      headers: {
+        'Location': location,
+      },
+    });
+  },
+
+  file(content: Blob, filename: string): Response {
+    return new Response(content, {
+      headers: {
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+    });
+  },
+};
+
+/**
+ * Generate a unique request ID
+ */
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }

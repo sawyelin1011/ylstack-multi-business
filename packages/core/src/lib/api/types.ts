@@ -16,6 +16,9 @@ export type HonoContext = Context<{ Bindings: AppContext }>;
 // Middleware type - function that can modify requests/responses
 export type HonoMiddleware = (ctx: HonoContext, next: Next) => Promise<void>;
 
+// Re-export needed types for public API
+export { Logger } from '../../logger';
+
 // Route options interface
 export interface RouteOptions {
   tags?: string[];
@@ -327,25 +330,6 @@ export interface ServerConfig {
   logger: Logger;
   database: Database;
   config: Config;
-}
-
-// Database interface (imported from db layer)
-export interface Database {
-  [key: string]: any;
-}
-
-// Config interface (imported from config layer)
-export interface Config {
-  [key: string]: any;
-}
-
-// Logger interface (imported from logger)
-export interface Logger {
-  debug(message: string, data?: any): void;
-  info(message: string, data?: any): void;
-  warn(message: string, data?: any): void;
-  error(message: string, error?: any, data?: any): void;
-  child(context: Record<string, any>): Logger;
 }
 
 // Utility type for API responses
